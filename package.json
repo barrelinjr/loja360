@@ -8,7 +8,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "start": "echo 'LOJA360 iniciado'",
+    "start": "node -e \"console.log('LOJA360 iniciado'); require('child_process').spawn('npm', ['install'], {stdio: 'inherit'})\"",
     "build": "echo 'Build complete'"
   },
   "devDependencies": {
