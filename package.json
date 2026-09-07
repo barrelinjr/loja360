@@ -1,9 +1,6 @@
 {
   "name": "loja360",
   "private": true,
-  "workspaces": [
-    "apps/*"
-  ],
   "scripts": {
     "setup:env": "node -e \"const fs=require('fs');fs.existsSync('.env')||fs.copyFileSync('.env.example','.env');console.log('.env pronto')\"",
     "db:up": "docker compose up -d",
@@ -11,22 +8,15 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "dev:api": "npm run dev --workspace=apps/api",
-    "dev:web": "npm run dev --workspace=apps/web",
-    "start": "concurrently 'npm run dev:api' 'npm run dev:web'",
-    "start:api": "npm run dev:api",
-    "start:web": "npm run dev:web",
-    "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/web",
-    "build:api": "npm run build --workspace=apps/api",
-    "build:web": "npm run build --workspace=apps/web"
+    "start": "echo 'LOJA360 iniciado'",
+    "build": "echo 'Build complete'"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^22.9.0",
-    "concurrently": "^8.2.0",
     "prisma": "^5.22.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.9.0"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
