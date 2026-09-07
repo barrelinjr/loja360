@@ -1,0 +1,289 @@
+// LOJA 360 — schema do MVP
+//
+// Convenções:
+// - Dinheiro é SEMPRE inteiro em centavos (priceCents, totalCents...).
+//   Float quebra em soma de centavos; Decimal resolve mas contamina o app
+//   com objetos Decimal. Centavos é chato de formatar e correto sempre.
+// - Todo dado de negócio carrega tenantId. Toda query filtra por tenantId.
+// - Enums em maiúsculas, valores estáveis (viram string no banco).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- tenant
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  cnpj      String?  @unique
+  segment   String // padaria, salao, loja, restaurante...
+  plan      Plan     @default(STARTER)
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  users      User[]
+  categories Category[]
+  products   Product[]
+  inventory  Inventory[]
+  movements  InventoryMovement[]
+  customers  Customer[]
+  sales      Sale[]
+  payments   Payment[]
+  counters   Counter[]
+}
+
+enum Plan {
+  STARTER
+  PRO
+  MASTER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(CASHIER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  sales Sale[]
+
+  @@index([tenantId])
+}
+
+enum Role {
+  ADMIN // dono
+  MANAGER // gerente
+  CASHIER // operador de caixa
+}
+
+/// Sequência de numeração por tenant (cupom, pedido).
+/// Incrementada dentro da mesma transação da venda.
+model Counter {
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  name     String // "receipt"
+  value    Int    @default(0)
+
+  @@id([tenantId, name])
+}
+
+// -------------------------------------------------------------- catálogo
+
+model Category {
+  id       String  @id @default(cuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  name     String
+  position Int     @default(0)
+
+  products Product[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Product {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  sku         String
+  barcode     String?
+  name        String
+  description String?
+  imageUrl    String?
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  /// Preço de venda em centavos.
+  priceCents Int
+  /// Custo em centavos. Usado para margem nos relatórios.
+  costCents  Int     @default(0)
+  /// Produto vendido por peso (kg) — quantidade aceita fração.
+  byWeight   Boolean @default(false)
+  active     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inventory  Inventory?
+  saleItems  SaleItem[]
+  movements  InventoryMovement[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
+  @@index([tenantId, active])
+  @@index([tenantId, name])
+}
+
+// --------------------------------------------------------------- estoque
+
+model Inventory {
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  productId String  @unique
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// Milésimos de unidade. 3 unidades = 3000; 1,250 kg = 1250.
+  /// Inteiro pelo mesmo motivo do dinheiro: soma de fração não pode derivar.
+  quantityMilli Int @default(0)
+  /// Reservado por pedido online ainda não entregue.
+  reservedMilli Int @default(0)
+  /// Nível que dispara alerta de reposição.
+  reorderMilli  Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model InventoryMovement {
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  type          MovementType
+  /// Positivo entra, negativo sai.
+  quantityMilli Int
+  /// Saldo depois do movimento — congela o histórico auditável.
+  balanceMilli  Int
+  reason        String?
+  saleId        String?
+  createdBy     String?
+  createdAt     DateTime     @default(now())
+
+  @@index([tenantId, productId, createdAt])
+}
+
+enum MovementType {
+  SALE
+  PURCHASE
+  ADJUSTMENT
+  LOSS
+  RETURN
+}
+
+// ------------------------------------------------------------------- crm
+
+model Customer {
+  id       String  @id @default(cuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  name     String
+  phone    String?
+  email    String?
+  document String? // CPF
+
+  firstPurchaseAt DateTime?
+  lastPurchaseAt  DateTime?
+  totalSpentCents Int       @default(0)
+  purchaseCount   Int       @default(0)
+  loyaltyPoints   Int       @default(0)
+
+  createdAt DateTime @default(now())
+
+  sales Sale[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, name])
+}
+
+// ---------------------------------------------------------------- vendas
+
+model Sale {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  /// Número do cupom, sequencial por tenant.
+  receiptNumber Int
+  cashierId     String
+  cashier       User      @relation(fields: [cashierId], references: [id])
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+
+  subtotalCents Int
+  discountCents Int        @default(0)
+  totalCents    Int
+  status        SaleStatus @default(COMPLETED)
+
+  createdAt DateTime @default(now())
+
+  items    SaleItem[]
+  payments Payment[]
+
+  @@unique([tenantId, receiptNumber])
+  @@index([tenantId, createdAt])
+  @@index([customerId])
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  /// Nome e preço congelados no momento da venda. Se o produto mudar de
+  /// preço ou nome amanhã, o cupom de hoje continua correto.
+  productName   String
+  quantityMilli Int
+  unitCents     Int
+  totalCents    Int
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model Payment {
+  id       String  @id @default(cuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  saleId   String?
+  sale     Sale?   @relation(fields: [saleId], references: [id])
+
+  method       PaymentMethod
+  amountCents  Int
+  /// Só para dinheiro: quanto o cliente entregou e quanto voltou.
+  tenderedCents Int?
+  changeCents   Int?
+  status       PaymentStatus @default(PAID)
+  /// id da transação no gateway (Pix/cartão), quando houver
+  externalId   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+enum PaymentMethod {
+  CASH
+  PIX
+  DEBIT
+  CREDIT
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
