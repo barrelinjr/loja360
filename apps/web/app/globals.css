@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color: theme(colors.ink);
+  }
+  /* Valores em dinheiro e quantidade não podem "pular" enquanto mudam. */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 3px solid theme(colors.brand.DEFAULT);
+    outline-offset: 2px;
+  }
+}
