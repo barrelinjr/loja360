@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: loja360-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: loja360
+      POSTGRES_PASSWORD: loja360
+      POSTGRES_DB: loja360
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loja360"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  db-data:
